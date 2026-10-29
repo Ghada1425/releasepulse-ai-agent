@@ -68,27 +68,36 @@ if page in {"Upload & Analysis", "Overview"}:
             ["release_candidate.csv", "healthy.csv", "injection.csv", "release_candidate.xlsx"],
         )
         use_sample = st.button("Load sample", use_container_width=True)
-    if upload is not None or use_sample:
-        data = (
-            upload.getvalue()
-            if upload is not None
-            else (ROOT / "data" / "samples" / sample).read_bytes()
-        )
-        name = upload.name if upload is not None else sample
+    # An explicit sample click wins; an upload only replaces the data when a new file arrives,
+    # so a file still attached to the uploader cannot silently undo a later sample load.
+    data = None
+    upload_id = upload.file_id if upload is not None else None
+    if use_sample:
+        data, name = (ROOT / "data" / "samples" / sample).read_bytes(), sample
+    elif upload is not None and upload_id != st.session_state.get("upload_id"):
+        data, name = upload.getvalue(), upload.name
+    st.session_state.upload_id = upload_id
+    if data is not None:
         fingerprint = hashlib.sha256(data).hexdigest()
         if fingerprint != st.session_state.get("fingerprint"):
+            # Never keep showing a previous report after a new one is submitted.
+            for key in ["rows", "source", "run", "proposal", "download", "upload_error"]:
+                st.session_state.pop(key, None)
+            st.session_state.fingerprint = fingerprint
             try:
                 rows = read_report(data, name)
                 st.session_state.rows = rows
-                st.session_state.fingerprint = fingerprint
                 st.session_state.source = name
-                for key in ["run", "proposal", "download"]:
-                    st.session_state.pop(key, None)
                 st.success(f"Validated {len(rows)} test executions")
+            except ValueError as exc:
+                st.session_state.upload_error = str(exc)[:300]
             except Exception as exc:
-                st.error(
-                    f"Upload rejected: {type(exc).__name__}. Check columns, values, size and unique test IDs."
-                )
+                st.session_state.upload_error = f"unreadable file ({type(exc).__name__})"
+    if "upload_error" in st.session_state:
+        st.error(
+            f"Upload rejected: {st.session_state.upload_error}. "
+            "Check columns, values, size and unique test IDs."
+        )
 
 rows = st.session_state.get("rows")
 if rows is None and page != "Evaluation":
@@ -114,7 +123,10 @@ if page in {"Overview", "Upload & Analysis"}:
     ):
         col.metric(label, value)
     st.subheader("Explainable release decision")
-    st.warning(metrics["decision"] + " · Deterministic policy assessment")
+    banner = {"READY": st.success, "REVIEW": st.warning, "HOLD": st.error}
+    banner.get(metrics["decision"], st.info)(
+        metrics["decision"] + " · Deterministic policy assessment"
+    )
     st.write(
         f"{len(metrics['critical_test_ids'])} critical open tests and {len(metrics['critical_gaps'])} critical coverage gaps."
     )

@@ -5,6 +5,7 @@ import zipfile
 from collections import Counter
 
 import pandas as pd
+from pydantic import ValidationError
 
 from releasepulse.models import CHANNELS, CRITICAL, FEATURES, TestCase
 
@@ -17,9 +18,12 @@ def read_report(data: bytes, filename: str) -> list[TestCase]:
     if filename.lower().endswith(".csv"):
         frame = pd.read_csv(io.BytesIO(data), dtype=str, keep_default_na=False)
     elif filename.lower().endswith(".xlsx"):
-        with zipfile.ZipFile(io.BytesIO(data)) as archive:
-            if sum(i.file_size for i in archive.infolist()) > 25 * 1024 * 1024:
-                raise ValueError("Expanded workbook exceeds 25 MB limit")
+        try:
+            with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                if sum(i.file_size for i in archive.infolist()) > 25 * 1024 * 1024:
+                    raise ValueError("Expanded workbook exceeds 25 MB limit")
+        except zipfile.BadZipFile:
+            raise ValueError("Not a valid XLSX workbook") from None
         frame = pd.read_excel(io.BytesIO(data), dtype=str, keep_default_na=False)
     else:
         raise ValueError("Only CSV and XLSX are accepted")
@@ -28,9 +32,16 @@ def read_report(data: bytes, filename: str) -> list[TestCase]:
         raise ValueError("Required columns: " + ", ".join(sorted(required)))
     if len(frame) > 10000:
         raise ValueError("Maximum 10,000 rows")
-    rows = [TestCase.model_validate(row) for row in frame.to_dict("records")]
-    if any(r.feature not in FEATURES for r in rows):
-        raise ValueError("Unknown feature; use the documented feature names")
+    rows = []
+    # Spreadsheet row numbers (header is row 1); the rejected value itself is not echoed.
+    for number, record in enumerate(frame.to_dict("records"), start=2):
+        try:
+            rows.append(TestCase.model_validate(record))
+        except ValidationError as exc:
+            field = ".".join(str(part) for part in exc.errors()[0]["loc"])
+            raise ValueError(f"Row {number}: invalid {field} value") from None
+        if rows[-1].feature not in FEATURES:
+            raise ValueError(f"Row {number}: unknown feature; use the documented feature names")
     if len({r.test_id for r in rows}) != len(rows):
         raise ValueError("Duplicate test_id; every execution must have a unique ID")
     return rows

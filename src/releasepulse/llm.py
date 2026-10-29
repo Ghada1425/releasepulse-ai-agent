@@ -1,7 +1,35 @@
+import json
 import os
 import time
 
-from openai import APIConnectionError, APITimeoutError, OpenAI, RateLimitError
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    InternalServerError,
+    OpenAI,
+    RateLimitError,
+)
+
+
+class BudgetExhausted(RuntimeError):
+    """Local request/token quota reached; no request was sent."""
+
+
+class ProviderUnavailable(RuntimeError):
+    """Rate limits, timeouts or provider errors persisted through every budgeted attempt."""
+
+
+class EmptyResponse(RuntimeError):
+    """OpenRouter can return HTTP 200 with an upstream error and no choices."""
+
+
+RETRYABLE = (
+    RateLimitError,
+    APIConnectionError,
+    APITimeoutError,
+    InternalServerError,
+    EmptyResponse,
+)
 
 
 class OpenRouter:
@@ -29,14 +57,12 @@ class OpenRouter:
     def complete(self, messages: list, tools: list):
         for attempt in range(3):
             # UTF-8 byte count is a conservative upper bound for text token reservation.
-            import json
-
             reserve = len(json.dumps([messages, tools]).encode()) + 1500
             if (
                 self.requests >= self.max_requests
                 or self.reserved_tokens + reserve > self.token_budget
             ):
-                raise RuntimeError("Request/token budget exhausted; no request sent")
+                raise BudgetExhausted("Request/token budget exhausted; no request sent")
             self.requests += 1
             self.reserved_tokens += reserve
             try:
@@ -50,9 +76,11 @@ class OpenRouter:
                 )
                 if response.usage:
                     self.tokens += response.usage.total_tokens
+                if not response.choices:
+                    raise EmptyResponse()
                 return response.choices[0].message
-            except (RateLimitError, APIConnectionError, APITimeoutError):
+            except RETRYABLE:
                 if attempt == 2:
-                    raise RuntimeError("OpenRouter unavailable after 3 attempts") from None
+                    raise ProviderUnavailable("OpenRouter unavailable after 3 attempts") from None
                 self.retries += 1
                 time.sleep(2**attempt)

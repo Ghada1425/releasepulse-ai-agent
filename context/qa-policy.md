@@ -1,7 +1,9 @@
 # Synthetic QA release policy v1.0
 
 These are project-defined demonstration rules, not financial regulatory guidance.
-The executable copy lives in `releasepulse.retrieval.RULES`; decision logic is in analytics.py.
+The table below is the single source served over MCP: `releasepulse.retrieval` parses these rows at
+startup and returns excerpts cited as `context/qa-policy.md#qa-0N`. Decision logic is in analytics.py.
+Keep each rule on one table row; a regression test fails if the table and the MCP server diverge.
 
 | ID | Rule |
 |---|---|

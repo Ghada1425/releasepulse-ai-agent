@@ -1,4 +1,5 @@
 import json
+import re
 import time
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -50,6 +51,12 @@ Explain observed risk and concrete retesting actions. Do not infer root causes o
 If tools fail, retry within budget; never invent successful results."""
 
 
+def strip_fence(text: str) -> str:
+    """Accept a single ```json fenced block; instruction-tuned models often add one."""
+    match = re.fullmatch(r"\s*```(?:json)?\s*(.*?)\s*```\s*", text, re.DOTALL)
+    return match.group(1) if match else text
+
+
 async def run_agent(
     rows: list[TestCase], llm, config: str = "B", max_steps: int = 8, retrieval=retrieve_mcp
 ) -> dict:
@@ -89,7 +96,8 @@ async def run_agent(
                 "status": "partial",
                 "metrics": metrics,
                 "trace": trace,
-                "error": "LLM unavailable or budget exhausted; deterministic policy remains available",
+                "error": f"LLM unavailable or budget exhausted ({type(exc).__name__}); "
+                "deterministic policy remains available",
             }
         if reply.tool_calls:
             if len(reply.tool_calls) > 6:
@@ -154,7 +162,7 @@ async def run_agent(
                 messages.append({"role": "tool", "tool_call_id": call.id, "content": content})
             continue
         try:
-            assessment = Assessment.model_validate_json(reply.content or "")
+            assessment = Assessment.model_validate_json(strip_fence(reply.content or ""))
             if (
                 not {
                     "analyze_testing_report",

@@ -126,6 +126,7 @@ async def evaluate(task: dict, config: str, llm=None) -> dict:
         "task_id": task["id"],
         "config": config,
         "mode": mode,
+        "model": getattr(llm, "model", "scripted"),
         "input": task["scenario"],
         "expected": json.dumps(task["expected"]),
         "actual": json.dumps(actual),

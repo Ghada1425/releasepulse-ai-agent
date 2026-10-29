@@ -99,7 +99,7 @@ class OpenRouter:
         key = os.getenv("OPENROUTER_API_KEY")
         if not key:
             raise ValueError("Set OPENROUTER_API_KEY in .env to run live AI analysis")
-        self.model = os.getenv("OPENROUTER_MODEL", "google/gemma-4-31b-it:free")
+        self.model = os.getenv("OPENROUTER_MODEL", "cohere/north-mini-code:free")
         base = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
         if not self.model.endswith(":free") or base != "https://openrouter.ai/api/v1":
             raise ValueError(
@@ -117,6 +117,7 @@ class OpenRouter:
         # Free shared pools need seconds, not 1-2 s backoff; capped to stay interactive.
         self.rate_limit_wait = rate_limit_wait
         self.errors: list[dict] = []
+        self.finish_reasons: list[str | None] = []
 
     def complete(self, messages: list, tools: list):
         for attempt in range(self.attempts):
@@ -142,6 +143,7 @@ class OpenRouter:
                     self.tokens += response.usage.total_tokens
                 if not response.choices:
                     raise EmptyResponse()
+                self.finish_reasons.append(getattr(response.choices[0], "finish_reason", None))
                 return response.choices[0].message
             except (*RETRYABLE, APIStatusError) as exc:
                 info = {"attempt": attempt + 1, **diagnose(exc)}

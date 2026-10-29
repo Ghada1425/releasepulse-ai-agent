@@ -10,24 +10,25 @@
 **SDAIA Academy — Agentic AI Systems Engineering Capstone** (Track 2 — Your Harness)
 
 ReleasePulse turns a QA testing spreadsheet into a traceable release decision. Python computes every
-metric and release gate; a bounded agent running **Google Gemma 4 31B via OpenRouter** investigates the
+metric and release gate; a bounded agent running **Cohere North Mini Code (`cohere/north-mini-code:free`) via OpenRouter** investigates the
 evidence with allowlisted tools and MCP guideline retrieval; a human reviews the result and explicitly
 approves any persistent report.
 
-> **Verification status (29 Oct 2026).** All local checks pass: 40 offline pytest tests, Ruff, offline A/B
-> harness 17/17 per configuration, real MCP stdio, Streamlit startup. The OpenRouter key is configured
-> and valid, but **live Gemma inference is BLOCKED upstream**: every request to
-> `google/gemma-4-31b-it:free` returned HTTP 429 `upstream_provider_shared_pool` from Google AI Studio
-> (the model's only free endpoint), so no tokens were generated and no live tool call has occurred yet.
-> The live test fails honestly and reports the error category. Offline results are labelled `deterministic_harness` and are
-> never presented as model accuracy. Full evidence: [docs/FINAL_AUDIT.md](docs/FINAL_AUDIT.md).
+> **Verification status (29 Oct 2026).** Local checks pass: 40 offline pytest tests, Ruff, offline A/B
+> harness 17/17 per configuration, real MCP stdio, Streamlit startup. **Live:** `tests/test_live.py`
+> passed on `cohere/north-mini-code:free` (model-chosen tool calls, real MCP retrieval, Pydantic and
+> grounding validation, decision HOLD). A matched live A/B subset of 6 tasks scored **5/6 in A and 5/6 in
+> B**; the remaining 11 tasks per configuration are pending the free-tier daily quota. The originally
+> planned `google/gemma-4-31b-it:free` returned HTTP 429 `upstream_provider_shared_pool` on every request
+> and remains a documented option. Offline results are labelled `deterministic_harness` and are never
+> presented as model accuracy. Full evidence: [docs/FINAL_AUDIT.md](docs/FINAL_AUDIT.md).
 
 ---
 
 ## Contents
 [Motivation](#problem-and-motivation) · [Features](#key-features) · [Architecture](#system-architecture) ·
 [Agent workflow](#how-the-agent-works) · [Tools & MCP](#tools-and-mcp) · [Install](#installation) ·
-[Configure OpenRouter](#configure-openrouter-and-gemma) · [Run](#run-the-application) ·
+[Configure OpenRouter](#configure-openrouter-and-the-model) · [Run](#run-the-application) ·
 [Example](#example-qa-analysis) · [Approval](#human-approval-workflow) · [Evaluation](#evaluation) ·
 [Security](#security-and-governance) · [Limitations](#known-limitations) · [Demo](#demo-and-presentation) ·
 [Author](#author-and-acknowledgements)
@@ -43,7 +44,7 @@ reproducible for **Nova Trade**, a fictional trading app. All data in this repos
   row-level error messages that never echo the rejected value.
 - **Deterministic QA analytics** — pass/failure rates, severity distribution, feature × channel
   coverage, duplicate issues and a versioned release policy (READY / REVIEW / HOLD / INSUFFICIENT_EVIDENCE).
-- **Tool-calling agent** — Gemma selects tools; arguments are schema-validated and allowlisted.
+- **Tool-calling agent** — the model selects tools; arguments are schema-validated and allowlisted.
 - **Real MCP integration** — QA guidelines are retrieved from a Python MCP stdio server.
 - **Grounded, typed output** — a Pydantic assessment must match the policy decision and cite real
   test IDs and retrieved rule IDs, including every critical issue.
@@ -62,7 +63,7 @@ flowchart LR
     U[Streamlit UI] --> V[Upload validation]
     V --> D[Deterministic analytics<br/>analytics.py]
     U --> A[Bounded agent loop<br/>agent.py]
-    A <--> L[OpenRouter<br/>google/gemma-4-31b-it:free]
+    A <--> L[OpenRouter<br/>cohere/north-mini-code:free]
     A --> T[Allowlisted read-only tools]
     T --> D
     T --> C[MCP stdio client]
@@ -88,8 +89,8 @@ flowchart LR
 
 ## How the agent works
 1. The UI validates the upload before any investigation starts; metrics are computed locally.
-2. The agent sends Gemma the system prompt, tool schemas and a task. **Raw issue text is never sent.**
-3. Gemma chooses tools. Each call is allowlisted, validated with Pydantic, executed, timed, capped at
+2. The agent sends the model the system prompt, tool schemas and a task. **Raw issue text is never sent.**
+3. The model chooses tools. Each call is allowlisted, validated with Pydantic, executed, timed, capped at
    6,000 characters and returned to the model as a `tool` message.
 4. The loop continues for at most **8 steps** (≤6 calls per step). History above 18,000 characters is
    compacted to bounded verified evidence.
@@ -125,10 +126,11 @@ uv sync --frozen
 ```
 `uv.lock` pins every dependency. If `uv` is not on your PATH, `pip install uv` and use `python -m uv`.
 
-## Configure OpenRouter and Gemma
+## Configure OpenRouter and the model
 | Setting | Value |
 |---|---|
-| Model | `google/gemma-4-31b-it:free` (Google Gemma 4 31B Instruct) |
+| Model (live-verified) | `cohere/north-mini-code:free` (Cohere North Mini Code, served by Cohere) |
+| Documented alternative | `google/gemma-4-31b-it:free` (Google Gemma 4 31B Instruct; HTTP 429 upstream on 29 Oct 2026) |
 | Provider / base URL | OpenRouter · `https://openrouter.ai/api/v1` |
 | Client | OpenAI-compatible Python SDK, `temperature=0`, SDK retries disabled |
 | Cost guard | `:free` models only, provider `max_price` 0, no paid fallback |
@@ -138,7 +140,7 @@ uv sync --frozen
 3. Edit `.env` (it is git-ignored; never commit it):
    ```dotenv
    OPENROUTER_API_KEY=your_key_here
-   OPENROUTER_MODEL=google/gemma-4-31b-it:free
+   OPENROUTER_MODEL=cohere/north-mini-code:free
    OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
    ```
 4. Verify live tool calling with one budgeted request sequence (≤12 requests):
@@ -148,7 +150,8 @@ uv sync --frozen
    Without a key this test is reported as `SKIPPED … BLOCKED — Awaiting API Key`; it is never faked.
 
 OpenRouter's free tier allows about 50 requests/day (about 1,000/day after buying 10 credits). Free
-model availability can change; an unavailable model is reported as a partial result, never replaced.
+model availability can change; an unavailable model is reported as a partial result and never replaced
+automatically. Switching models is an explicit `OPENROUTER_MODEL` setting; only `:free` IDs are accepted.
 
 Failed attempts are logged (logger `releasepulse.llm`) and kept in `OpenRouter.errors` as key-free
 records: `category` (`rate_limited_upstream`, `rate_limited_account`, `auth`, `insufficient_credits`,
@@ -222,7 +225,14 @@ Subsets: `--config A --ids 05_login 14_injection`.
 | Run | A | B | Mode |
 |---|---:|---:|---|
 | Offline harness (final, 29 Oct 2026) | 17/17 | 17/17 | `deterministic_harness` |
-| Live Gemma via OpenRouter | **BLOCKED** | **BLOCKED** | Upstream 429 on the free model; not run |
+| Live subset, `cohere/north-mini-code:free` (29 Oct 2026) | 5/6 | 5/6 | `live` — tasks 03, 04, 05, 12, 13, 14 |
+| Live remainder (11 tasks per configuration) | pending | pending | Free-tier daily quota; `--resume` |
+| Live `google/gemma-4-31b-it:free` | BLOCKED | BLOCKED | HTTP 429 upstream on every request; not run |
+
+The live subset is too small to compare A and B. Both configurations failed the same task,
+`13_evidence` (empty report). The validator rejected ungrounded output: in A, a final answer before
+retrieval and then a wrong decision; in B, findings cited for a report with no issues. Details are in
+[evals/error_analysis.md](evals/error_analysis.md).
 
 Equal offline scores demonstrate shared controls, **not** an improvement from prompt B and not model
 accuracy. Historical failed runs and the error analysis are in [evals/error_analysis.md](evals/error_analysis.md).
@@ -252,8 +262,9 @@ CI (`.github/workflows/ci.yml`) runs the same checks plus the offline evaluation
 - Context contracts: [AGENTS.md](AGENTS.md), [system spec](context/system-spec.md).
 
 ## Known limitations
-- Live Gemma tool-calling quality, prompt-B effectiveness and live adversarial robustness are
-  **unverified**: the free Gemma 4 31B pool returned 429 on every attempt on 29 Oct 2026.
+- The live evaluation covers 6 of 17 tasks per configuration; prompt-B effectiveness is not yet measured.
+  Live tool calling and the injection task are verified only on `cohere/north-mini-code:free`; Gemma 4 31B
+  is unverified (HTTP 429 upstream on every attempt on 29 Oct 2026).
 - Free-model availability, tool-calling support and quotas on OpenRouter can change.
 - Policy and severity labels are a fixed synthetic checklist, not an assessment of a real trading system.
 - Issue descriptions are withheld from the model, limiting nuanced free-text interpretation.
@@ -265,8 +276,8 @@ CI (`.github/workflows/ci.yml`) runs the same checks plus the offline evaluation
 ## Demo and presentation
 [Demo script](docs/demo-script.md) · [slides](slides/ReleasePulse-capstone.pptx) ·
 [final audit](docs/FINAL_AUDIT.md) · [verification record](docs/verification.md) ·
-[course review](docs/course-review.md). Without a key, present the deterministic flow and announce that
-live inference is pending; record a live backup once the key is configured.
+[course review](docs/course-review.md). The live agent runs on `cohere/north-mini-code:free`; check the
+daily free-model quota before presenting, and record a live backup run.
 
 ## Author and acknowledgements
 **Developed by Ghada Alaidi** as an independent capstone for **SDAIA Academy — Agentic AI Systems

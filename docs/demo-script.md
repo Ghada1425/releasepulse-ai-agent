@@ -30,8 +30,8 @@ hypothesis until paired live trials establish it. Do not claim a model-accuracy 
 
 **7:00–8:00 — Security.** Load injection.csv and show the malicious description. Explain the lethal
 trifecta, exclusion of raw text, tool allowlist, fixed API destination and immutable approval proposal.
-Show the attack regression result. Close with the remaining live-verification step (API key).
+Show the attack regression result and the live `14_injection` pass on `cohere/north-mini-code:free`.
 
 Fallback: use the actual dashboard screenshots, policy calculations and recorded local test results.
-They are not a substitute for the pending live model requirement. Record a real live demo after keys
-are configured if a backup recording is needed for presentation day.
+They are not a substitute for a live run. Record a live backup with `cohere/north-mini-code:free`
+before presentation day; the free tier allows 50 requests/day and one agent run uses about 5.

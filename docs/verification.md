@@ -49,7 +49,17 @@ attached unchanged and work continued on `main`.
   the eval runner was not resumable and crashed without a key.
 Commit hashes and per-requirement status: [FINAL_AUDIT.md](FINAL_AUDIT.md).
 
+## Live verification — 29 October 2026
+- `google/gemma-4-31b-it:free`: every request returned HTTP 429 `upstream_provider_shared_pool`
+  (Google AI Studio, the only free endpoint). 0 tokens and no tool calls. Kept as a documented option.
+- `cohere/north-mini-code:free` (owner-approved alternative): one minimal request returned a real
+  `ping` tool call at $0. `tests/test_live.py` then **passed**: 5 requests, 4,779 tokens, tools
+  analyze → calculate → retrieve (real MCP) → generate, Pydantic and grounding validation, decision HOLD.
+- Live A/B subset (`evals/live_results_*.csv`): A 5/6, B 5/6 on tasks 03, 04, 05, 12, 13, 14. Both
+  failed `13_evidence` with `invalid_or_ungrounded_output`. 36 requests used of the 50/day free allowance.
+- Offline after these changes: `pytest tests/test_system.py tests/test_ui.py` 40 passed, Ruff clean,
+  offline harness A 17/17, B 17/17.
+
 ## Still pending
-Actual OpenRouter inference; complete live A/B suite; live attack/demo recording. All are BLOCKED on
-the project owner's OpenRouter API key, are necessary for full capstone acceptance and are not marked
-complete. See README commands. Do not present offline pass rates as live model accuracy.
+Live run of the remaining 11 tasks per configuration (`--live --resume`, quota-limited) and a live
+demo recording. Do not present offline pass rates as live model accuracy.

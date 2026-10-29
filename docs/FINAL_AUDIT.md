@@ -7,7 +7,8 @@
 (minimum requirements 1–5, rubric 25/25/20/20/10, submission checklist), retrieved during this audit.
 
 Status key: **PASS** = executed and observed in this audit · **BLOCKED** = cannot run without an
-external dependency (originally the API key; now the upstream free-model rate limit) · **FAIL** = executed and did not meet the requirement.
+external dependency · **PARTIAL** = executed on a subset, the rest quota-limited · **FAIL** = executed and did
+not meet the requirement.
 Nothing marked PASS relies on a previous agent's claim.
 
 ## Environment and commits
@@ -34,8 +35,8 @@ GitHub Actions run 40837833566 on `67ed574`: **success** (ruff, format, pytest, 
 | Format | `uv run ruff format --check .` | 24 files already formatted | PASS |
 | Test suite | `uv run pytest -q tests/test_system.py tests/test_ui.py` | **40 passed** (offline). Live test excluded to save free-tier quota; its run is under “Live run with key” | PASS |
 | Offline A/B eval | `uv run python -m releasepulse.evaluation` | A 17/17, B 17/17 (`deterministic_harness`) | PASS |
-| Live A/B eval | `uv run python -m releasepulse.evaluation --live` | `BLOCKED: Set OPENROUTER_API_KEY…`, exit 2, no files | BLOCKED |
-| Live smoke | `uv run pytest tests/test_live.py -rs` | Superseded — see “Live run with key” below | BLOCKED |
+| Live A/B eval | `--live --ids 03_columns 04_status 12_approval 05_login 14_injection`, then `--resume --ids 13_evidence` (`cohere/north-mini-code:free`) | A 5/6, B 5/6; both fail `13_evidence`; 11 tasks/config pending quota | PARTIAL |
+| Live smoke | `uv run pytest tests/test_live.py -s -rs` (`cohere/north-mini-code:free`) | **1 passed**: 5 requests, 4,779 tokens, 4 model-chosen tools, HOLD | PASS |
 | Streamlit start | headless on 127.0.0.1:8599, probe `/_stcore/health` and `/` | `ok` after 4 s; HTTP 200 | PASS |
 | Clean clone | fresh `git clone` of `67ed574`, README commands only | ruff/format pass; 38 passed, 1 skipped; eval 34/34 | PASS |
 | Secret scan | `git grep` + `git log -p --all` for key/token patterns; `.env`/`runtime/` tracking | No matches; neither tracked; `.gitignore` covers both | PASS |
@@ -45,7 +46,7 @@ GitHub Actions run 40837833566 on `67ed574`: **success** (ruff, format, pytest, 
 |---|---|---|---|---|---|
 | 1a | Multi-step agent, ≥3 tools | `src/releasepulse/agent.py` (4 tools, 8-step loop) | `test_multistep_injection_defense`, eval tasks 05–17 | Four tools executed in sequence; results returned as `tool` messages | PASS (scripted model) |
 | 1b | ≥1 tool over MCP | `mcp_server.py`, `mcp_client.py` (stdio, FastMCP) | `test_real_mcp`, `test_mcp_knowledge_base_matches_maintained_policy` | Real subprocess initialize + call_tool; ranked rule IDs returned | PASS |
-| 1c | Genuine model-driven tool calls | `llm.py` → OpenRouter `google/gemma-4-31b-it:free` | `tests/test_live.py`, live eval | Key valid; every request HTTP 429 upstream, 0 tokens | BLOCKED |
+| 1c | Genuine model-driven tool calls | `llm.py` → OpenRouter `cohere/north-mini-code:free` (Gemma 4 31B documented, 429 upstream) | `tests/test_live.py`, live eval | Live test passed; real tool calls and MCP retrieval | PASS (Cohere) |
 | 2a | Context file | `AGENTS.md`, `context/system-spec.md`, `context/qa-policy.md` | Review | Present and consistent with code | PASS |
 | 2b | Memory/retrieval | `retrieval.py` parses `qa-policy.md`, served via MCP | Policy/MCP consistency test | Served excerpts equal the maintained table | PASS |
 | 2c | Compaction/budget rule | 6,000-char tool cap, 18,000-char history compaction, request/token reservation | `test_free_model_and_budget`, `test_token_reservation_prevents_request` | Budget stops before any request | PASS |
@@ -53,17 +54,17 @@ GitHub Actions run 40837833566 on `67ed574`: **success** (ruff, format, pytest, 
 | 3b | Step/cost budgets | 8 steps, 6 calls/step, 1 repair, request/token caps, `:free` + `max_price 0` | `test_bounded_repair`, `test_budget_exhaustion_is_reported_as_partial`, `test_rate_limits_count_every_attempt` | Bounded; typed `BudgetExhausted` | PASS |
 | 4a | ≥15 tasks with automatic graders | `evals/tasks.jsonl` (17), `evaluation.py` | `test_eval_grades_agent_decision_not_policy_oracle` | Graders read agent decision, tools used, injection exclusion | PASS |
 | 4b | Two configurations | A baseline / B enhanced prompt (`agent.py`) | Offline run | A 17/17, B 17/17 offline | PASS (offline) |
-| 4c | Live run of both configurations | `--live`, resumable, quota-aware | — | Awaiting key | BLOCKED |
+| 4c | Live run of both configurations | `--live`, resumable, quota-aware | `evals/live_results_{A,B}.csv` | 6/17 tasks per config run live: A 5/6, B 5/6 | PARTIAL (quota) |
 | 4d | Error analysis | `evals/error_analysis.md` | Review | Historical failures retained; grader defects documented | PASS |
-| 5 | Security note: trifecta, attack, defence | `docs/security.md`, `data/samples/injection.csv` | `test_multistep_injection_defense`, `test_unauthorized_tool_denied`, `test_untrusted_final_decision_cannot_override_policy` | Raw payload absent from model messages; `save_report` rejected; HOLD kept | PASS (code-level); live red-team BLOCKED |
+| 5 | Security note: trifecta, attack, defence | `docs/security.md`, `data/samples/injection.csv` | `test_multistep_injection_defense`, `test_unauthorized_tool_denied`, `test_untrusted_final_decision_cannot_override_policy` | Raw payload absent from model messages; `save_report` rejected; HOLD kept | PASS (code-level); live `14_injection` passed A and B |
 
 ## Rubric
 | Criterion (weight) | Evidence | Status | Remaining |
 |---|---|---|---|
-| Working system and live demo (25%) | App starts; upload → metrics → issues → approval verified by AppTest and HTTP probe; agent path verified with scripted model | PASS for deterministic flow · **BLOCKED** for live Gemma demo | Configure key; rehearse live demo; record backup |
+| Working system and live demo (25%) | App starts; upload → metrics → issues → approval verified by AppTest and HTTP probe; agent path verified with scripted model | PASS for deterministic flow · live agent PASS on `cohere/north-mini-code:free` (`tests/test_live.py`) · Gemma BLOCKED (429) | Rehearse live demo; record backup |
 | Context and harness engineering (25%) | Spec files, single-source MCP policy, compaction, budgets, allowlist, typed retries, grounding validator | PASS | — |
-| Evaluation and error analysis (20%) | 17 tasks × A/B, automatic graders, failure categories, resumable runner, error analysis | PASS offline · **BLOCKED** live | Run live A/B; analyse real failure categories; update error analysis |
-| Security, governance and operability (20%) | Trifecta analysis, injection test, tool allowlist, byte-bound approval, validated uploads, no secrets in logs, CI | PASS | Live adversarial check after key |
+| Evaluation and error analysis (20%) | 17 tasks × A/B, automatic graders, failure categories, resumable runner, error analysis | PASS offline · **PARTIAL** live (A 5/6, B 5/6; failure analysed) | Finish 11 tasks/config with `--resume` |
+| Security, governance and operability (20%) | Trifecta analysis, injection test, tool allowlist, byte-bound approval, validated uploads, no secrets in logs, CI | PASS (live `14_injection` passed A and B) | — |
 | Presentation and reproducibility (10%) | README, demo script, 8-slide deck consistent with code (slide 7 count updated), clean-clone run, CI green | PASS | Record demo backup once live |
 
 ## UI verification (AppTest, `tests/test_ui.py`)
@@ -99,21 +100,33 @@ neither confirmed nor refuted live. They still pass with the scripted model.
 trace and partial-result message include the category. Unit tests:
 `test_upstream_rate_limit_is_categorized_and_waits`, `test_non_retryable_status_is_recorded_without_retry`.
 
-**Blocker:** external and not something code can fix. The model was not swapped. Owner options: retry
+**Blocker (Gemma):** external, and not something code can fix. Gemma was not swapped automatically. Owner options: retry
 later; add a free Google AI Studio key under OpenRouter → Settings → Integrations (BYOK, same model);
 or approve a different model.
 
-## Live-path hardening (unit-tested, not live-verified)
+## Live run on the alternative model (owner-approved)
+| Step | Observed |
+|---|---|
+| Catalog | `cohere/north-mini-code:free`: $0 prompt/completion, `tools` supported, one endpoint (Cohere) |
+| One minimal request | HTTP 200, `finish_reason: tool_calls`, real `ping` call, 71 tokens, cost 0 |
+| `tests/test_live.py`, first run | Four tools OK incl. MCP; final output failed validation twice (`partial`) |
+| Diagnostic capture (scratchpad, not committed) | First final answer echoed the JSON schema plus prose; repaired answer valid → `complete` |
+| Fix | Shared prompt asks for a JSON instance, not the schema; repair message states the validation reason |
+| `tests/test_live.py`, after fix | **PASS**: 5 requests, 4,779 tokens, no provider errors, no repairs |
+| Live A/B subset | A 5/6, B 5/6 (`13_evidence` failed in both; see `evals/error_analysis.md`) |
+| Quota | 36 of 50 free-model requests/day used across all runs. The remaining tasks continue with `--resume` |
+
+## Live-path hardening (unit-tested)
 5xx and empty OpenRouter responses are retried within budget; fenced ```json final answers are
 unwrapped; failures surface as `BudgetExhausted` / `ProviderUnavailable` class names only. Whether
 `google/gemma-4-31b-it:free` supports function calling reliably on OpenRouter's free tier is **unverified**.
 If it does not, the agent returns a partial result; the model must not be swapped without the owner's decision.
 
-## Remaining work (blocked on upstream free-model availability)
+## Remaining work (quota-limited)
 1. ~~Add `OPENROUTER_API_KEY` to `.env`~~ — done; key valid.
-2. `uv run pytest tests/test_live.py -s -rs` once the 429s clear; it must pass before step 3.
-3. `uv run python -m releasepulse.evaluation --live --max-requests 40`, then repeat with `--resume`
+2. ~~`uv run pytest tests/test_live.py -s -rs`~~ — passed on `cohere/north-mini-code:free`.
+3. `uv run python -m releasepulse.evaluation --live --resume --max-requests 45` on later days
    until both `evals/live_results_A.csv` and `evals/live_results_B.csv` hold 17 rows.
-4. Update `evals/error_analysis.md` and README results with the real A/B numbers and failure categories.
+4. Update `evals/error_analysis.md` and README results with the full A/B numbers.
 5. Run the demo once live, record a backup, and refresh `docs/screenshots/overview.png`.
 6. Commit the live CSVs and docs (never `.env`) and push.

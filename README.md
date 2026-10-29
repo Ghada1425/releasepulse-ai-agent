@@ -14,7 +14,7 @@ metrics and release gates; a bounded agent investigates evidence with local tool
 The user reviews the result and explicitly approves any persistent report export.
 
 > **Verification status:** local tool, harness and UI tests are supplied. Live OpenRouter inference and
-> live A/B evaluation remain pending an API key. GitHub publication remains pending authentication.
+> live A/B evaluation remain pending an API key. Published at [Ghada1425/releasepulse-ai-agent](https://github.com/Ghada1425/releasepulse-ai-agent).
 > Offline results are explicitly labelled `deterministic_harness`, never presented as model accuracy.
 
 ## Problem and motivation

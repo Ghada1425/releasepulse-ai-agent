@@ -15,7 +15,7 @@ installed with `uv sync --frozen` and passed a deterministic READY-policy smoke 
 - Ruff formatting and lint checks passed. Final pytest: 22 passed. Final offline A/B: 17/17 each.
 - Browser verification confirmed rejection wrote nothing, then approval saved the exact JSON and exposed its download.
 - Public OpenRouter catalog contained the requested model with zero pricing; no inference request was made.
-- GitHub CLI reported invalid authentication. User elected to configure credentials later.
+- GitHub authentication was subsequently renewed and the repository published at https://github.com/Ghada1425/releasepulse-ai-agent. The remote commit was verified against the local commit.
 
 ## Environment errors and corrections
 The default sandbox temporary directory denied file operations. Tests were rerun with TEMP/TMP and
@@ -32,6 +32,6 @@ copied byte-for-byte into slides/ReleasePulse-capstone.pptx and matching SHA-256
 This is not a claim of testing in Microsoft PowerPoint itself.
 
 ## Still pending
-Actual OpenRouter inference; complete live A/B suite; live attack/demo recording; authenticated GitHub
-publication and remote verification. These are necessary for full capstone acceptance and are not marked
+Actual OpenRouter inference; complete live A/B suite; live attack/demo recording.
+These are necessary for full capstone acceptance and are not marked
 complete. See README commands. Do not present offline pass rates as live model accuracy.

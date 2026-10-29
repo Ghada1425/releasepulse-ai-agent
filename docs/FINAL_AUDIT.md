@@ -114,7 +114,7 @@ or approve a different model.
 | Fix | Shared prompt asks for a JSON instance, not the schema; repair message states the validation reason |
 | `tests/test_live.py`, after fix | **PASS**: 5 requests, 4,779 tokens, no provider errors, no repairs |
 | Live A/B subset | A 5/6, B 5/6 (`13_evidence` failed in both; see `evals/error_analysis.md`) |
-| Quota | 36 of 50 free-model requests/day used across all runs. The remaining tasks continue with `--resume` |
+| Quota | OpenRouter `/key` reported 53 of 50 free-model requests used on 29 Oct 2026, including the rejected Gemma attempts. No further live calls were made that day; the remaining tasks continue with `--resume` |
 
 ## Live-path hardening (unit-tested)
 5xx and empty OpenRouter responses are retried within budget; fenced ```json final answers are
@@ -130,3 +130,14 @@ If it does not, the agent returns a partial result; the model must not be swappe
 4. Update `evals/error_analysis.md` and README results with the full A/B numbers.
 5. Run the demo once live, record a backup, and refresh `docs/screenshots/overview.png`.
 6. Commit the live CSVs and docs (never `.env`) and push.
+
+## Final submission check (29 Oct 2026)
+- Configuration: `OPENROUTER_MODEL=cohere/north-mini-code:free`, official base URL, key only in the
+  git-ignored `.env`. `.env` and `runtime/` are untracked.
+- `uv run ruff check .`: pass. `uv run ruff format --check .`: 25 files formatted.
+- `uv run pytest -q --deselect tests/test_live.py::…`: **40 passed, 1 deselected**. The live test was
+  deselected only because the free daily quota was exhausted. Its recorded live result on this
+  configuration is **1 passed** (above).
+- GitHub Actions on `baa0c86` (run 40845339032): **success**. The CI result for this commit is
+  reported in the handover.
+

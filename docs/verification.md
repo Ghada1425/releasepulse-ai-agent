@@ -56,7 +56,7 @@ Commit hashes and per-requirement status: [FINAL_AUDIT.md](FINAL_AUDIT.md).
   `ping` tool call at $0. `tests/test_live.py` then **passed**: 5 requests, 4,779 tokens, tools
   analyze → calculate → retrieve (real MCP) → generate, Pydantic and grounding validation, decision HOLD.
 - Live A/B subset (`evals/live_results_*.csv`): A 5/6, B 5/6 on tasks 03, 04, 05, 12, 13, 14. Both
-  failed `13_evidence` with `invalid_or_ungrounded_output`. 36 requests used of the 50/day free allowance.
+  failed `13_evidence` with `invalid_or_ungrounded_output`. The 50/day free allowance was then exhausted (OpenRouter `/key`: 53 used, including rejected Gemma attempts).
 - Offline after these changes: `pytest tests/test_system.py tests/test_ui.py` 40 passed, Ruff clean,
   offline harness A 17/17, B 17/17.
 

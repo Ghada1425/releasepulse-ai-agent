@@ -1,0 +1,25 @@
+[project]
+name = "releasepulse"
+version = "1.0.0"
+description = "Evidence-based QA and release intelligence agent"
+requires-python = ">=3.11,<3.15"
+dependencies = ["openai>=1.60,<3", "pydantic>=2.10,<3", "pandas>=2.2,<3", "openpyxl>=3.1,<4", "streamlit>=1.45,<2", "mcp>=1.12,<2", "python-dotenv>=1,<2"]
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "pytest-asyncio>=0.25,<2", "ruff>=0.11", "httpx>=0.28"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+

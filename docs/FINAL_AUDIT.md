@@ -7,7 +7,7 @@
 (minimum requirements 1–5, rubric 25/25/20/20/10, submission checklist), retrieved during this audit.
 
 Status key: **PASS** = executed and observed in this audit · **BLOCKED** = cannot run without an
-external dependency (the OpenRouter API key) · **FAIL** = executed and did not meet the requirement.
+external dependency (originally the API key; now the upstream free-model rate limit) · **FAIL** = executed and did not meet the requirement.
 Nothing marked PASS relies on a previous agent's claim.
 
 ## Environment and commits
@@ -32,10 +32,10 @@ GitHub Actions run 40837833566 on `67ed574`: **success** (ruff, format, pytest, 
 | Syntax/imports | `python -m compileall -q src app.py`; full pytest import | No errors | PASS |
 | Lint | `uv run ruff check .` | All checks passed | PASS |
 | Format | `uv run ruff format --check .` | 24 files already formatted | PASS |
-| Test suite | `uv run pytest -q -rs` | **38 passed, 1 skipped** (live, BLOCKED — Awaiting API Key) | PASS |
+| Test suite | `uv run pytest -q tests/test_system.py tests/test_ui.py` | **40 passed** (offline). Live test excluded to save free-tier quota; its run is under “Live run with key” | PASS |
 | Offline A/B eval | `uv run python -m releasepulse.evaluation` | A 17/17, B 17/17 (`deterministic_harness`) | PASS |
 | Live A/B eval | `uv run python -m releasepulse.evaluation --live` | `BLOCKED: Set OPENROUTER_API_KEY…`, exit 2, no files | BLOCKED |
-| Live smoke | `uv run pytest tests/test_live.py -rs` | Skipped: BLOCKED — Awaiting API Key | BLOCKED |
+| Live smoke | `uv run pytest tests/test_live.py -rs` | Superseded — see “Live run with key” below | BLOCKED |
 | Streamlit start | headless on 127.0.0.1:8599, probe `/_stcore/health` and `/` | `ok` after 4 s; HTTP 200 | PASS |
 | Clean clone | fresh `git clone` of `67ed574`, README commands only | ruff/format pass; 38 passed, 1 skipped; eval 34/34 | PASS |
 | Secret scan | `git grep` + `git log -p --all` for key/token patterns; `.env`/`runtime/` tracking | No matches; neither tracked; `.gitignore` covers both | PASS |
@@ -45,7 +45,7 @@ GitHub Actions run 40837833566 on `67ed574`: **success** (ruff, format, pytest, 
 |---|---|---|---|---|---|
 | 1a | Multi-step agent, ≥3 tools | `src/releasepulse/agent.py` (4 tools, 8-step loop) | `test_multistep_injection_defense`, eval tasks 05–17 | Four tools executed in sequence; results returned as `tool` messages | PASS (scripted model) |
 | 1b | ≥1 tool over MCP | `mcp_server.py`, `mcp_client.py` (stdio, FastMCP) | `test_real_mcp`, `test_mcp_knowledge_base_matches_maintained_policy` | Real subprocess initialize + call_tool; ranked rule IDs returned | PASS |
-| 1c | Genuine model-driven tool calls | `llm.py` → OpenRouter `google/gemma-4-31b-it:free` | `tests/test_live.py`, live eval | Not executable without key | BLOCKED |
+| 1c | Genuine model-driven tool calls | `llm.py` → OpenRouter `google/gemma-4-31b-it:free` | `tests/test_live.py`, live eval | Key valid; every request HTTP 429 upstream, 0 tokens | BLOCKED |
 | 2a | Context file | `AGENTS.md`, `context/system-spec.md`, `context/qa-policy.md` | Review | Present and consistent with code | PASS |
 | 2b | Memory/retrieval | `retrieval.py` parses `qa-policy.md`, served via MCP | Policy/MCP consistency test | Served excerpts equal the maintained table | PASS |
 | 2c | Compaction/budget rule | 6,000-char tool cap, 18,000-char history compaction, request/token reservation | `test_free_model_and_budget`, `test_token_reservation_prevents_request` | Budget stops before any request | PASS |
@@ -75,15 +75,43 @@ GitHub Actions run 40837833566 on `67ed574`: **success** (ruff, format, pytest, 
 | Decision banner | Yellow warning for every decision | READY green, REVIEW amber, HOLD red |
 | Run agent without key | Configuration error | Unchanged, now regression-tested |
 
+## Live run with key (29 Oct 2026)
+The owner configured `.env`; the key was never printed or committed.
+
+| Probe | Observed |
+|---|---|
+| `GET /api/v1/key` | 200; free tier, usage 0 |
+| `GET /models/google/gemma-4-31b-it:free/endpoints` | One endpoint, Google AI Studio, lists `tools` |
+| Owner's run of `tests/test_live.py` (before fix) | `partial`, 3 requests, 0 tokens; no retrieval in trace |
+| Single raw request with one tool | HTTP 429 `limit_source: upstream_provider_shared_pool`, provider Google AI Studio |
+| `tests/test_live.py` after fix (15 s + 30 s backoff) | FAILED: 3 × `rate_limited_upstream` 429, 0 tokens, trace `[llm: error]` |
+| Single raw request about 5 minutes later | HTTP 429, same metadata, no `Retry-After` header |
+
+**Root cause:** Google AI Studio's shared free pool for this model throttled every request upstream. The
+old client retried after 1 s and 2 s and kept only `ProviderUnavailable`, so the failure looked like an
+agent/tool problem. Failed responses carry no usage, hence 0 tokens: **no inference took place**.
+Tool-call parsing, MCP retrieval and output validation were never reached on the live path, so they are
+neither confirmed nor refuted live. They still pass with the scripted model.
+
+**Fix:** `diagnose()` classifies each failed attempt (key-free: category, status, provider,
+`limit_source`), keeps it in `OpenRouter.errors` and logs it. 429 waits for `Retry-After` or 15 s/30 s
+(capped at 60 s). Non-retryable statuses (401/402/404/400) fail at once with their category. The agent
+trace and partial-result message include the category. Unit tests:
+`test_upstream_rate_limit_is_categorized_and_waits`, `test_non_retryable_status_is_recorded_without_retry`.
+
+**Blocker:** external and not something code can fix. The model was not swapped. Owner options: retry
+later; add a free Google AI Studio key under OpenRouter → Settings → Integrations (BYOK, same model);
+or approve a different model.
+
 ## Live-path hardening (unit-tested, not live-verified)
 5xx and empty OpenRouter responses are retried within budget; fenced ```json final answers are
 unwrapped; failures surface as `BudgetExhausted` / `ProviderUnavailable` class names only. Whether
 `google/gemma-4-31b-it:free` supports function calling reliably on OpenRouter's free tier is **unverified**.
 If it does not, the agent returns a partial result; the model must not be swapped without the owner's decision.
 
-## Remaining work (all blocked on the API key)
-1. Add `OPENROUTER_API_KEY` to `.env` (README → Configure OpenRouter and Gemma).
-2. `uv run pytest tests/test_live.py -s -rs` — confirms live tool calling.
+## Remaining work (blocked on upstream free-model availability)
+1. ~~Add `OPENROUTER_API_KEY` to `.env`~~ — done; key valid.
+2. `uv run pytest tests/test_live.py -s -rs` once the 429s clear; it must pass before step 3.
 3. `uv run python -m releasepulse.evaluation --live --max-requests 40`, then repeat with `--resume`
    until both `evals/live_results_A.csv` and `evals/live_results_B.csv` hold 17 rows.
 4. Update `evals/error_analysis.md` and README results with the real A/B numbers and failure categories.

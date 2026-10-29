@@ -317,3 +317,69 @@ def test_eval_resume_skips_recorded_tasks(monkeypatch, tmp_path):
     assert asyncio.run(evaluation.main()) == 0
     results = pd.read_csv(tmp_path / "evals" / "results_A.csv")
     assert list(results.task_id) == ["03_columns", "04_status"]
+
+
+def test_upstream_rate_limit_is_categorized_and_waits(monkeypatch):
+    import httpx
+    from openai import RateLimitError
+
+    from releasepulse.llm import OpenRouter, ProviderUnavailable
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-not-a-real-key")
+    monkeypatch.setenv("OPENROUTER_MODEL", "google/gemma-4-31b-it:free")
+    client = OpenRouter(max_requests=5)
+    # Shape of the real OpenRouter 429 observed for the shared free pool.
+    body = {
+        "message": "Provider returned error",
+        "code": 429,
+        "metadata": {
+            "provider_name": "Google AI Studio",
+            "limit_source": "upstream_provider_shared_pool",
+        },
+    }
+    response = httpx.Response(
+        429, headers={"retry-after": "7"}, request=httpx.Request("POST", "https://openrouter.ai")
+    )
+
+    def limited(**kwargs):
+        raise RateLimitError("Provider returned error", response=response, body=body)
+
+    waits = []
+    monkeypatch.setattr(client.client.chat.completions, "create", limited)
+    monkeypatch.setattr("releasepulse.llm.time.sleep", waits.append)
+    with pytest.raises(ProviderUnavailable) as raised:
+        client.complete([], [])
+    assert raised.value.category == "rate_limited_upstream"
+    assert waits == [7.0, 7.0]
+    assert [e["category"] for e in client.errors] == ["rate_limited_upstream"] * 3
+    assert client.errors[0]["provider"] == "Google AI Studio"
+    assert "test-not-a-real-key" not in json.dumps(client.errors)
+
+
+def test_non_retryable_status_is_recorded_without_retry(monkeypatch):
+    import httpx
+    from openai import NotFoundError
+
+    from releasepulse.llm import OpenRouter
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-not-a-real-key")
+    monkeypatch.setenv("OPENROUTER_MODEL", "google/gemma-4-31b-it:free")
+    client = OpenRouter(max_requests=5)
+    response = httpx.Response(404, request=httpx.Request("POST", "https://openrouter.ai"))
+
+    def missing(**kwargs):
+        raise NotFoundError("No endpoints found", response=response, body=None)
+
+    monkeypatch.setattr(client.client.chat.completions, "create", missing)
+    with pytest.raises(NotFoundError):
+        client.complete([], [])
+    assert client.requests == 1
+    assert client.errors == [
+        {
+            "attempt": 1,
+            "category": "model_unavailable",
+            "status": 404,
+            "provider": None,
+            "limit_source": None,
+        }
+    ]

@@ -21,7 +21,9 @@ def test_live_gemma_tool_calling_on_critical_login():
     rows = scenario("critical_login")
     llm = OpenRouter(max_requests=12, token_budget=120000)
     run = asyncio.run(run_agent(rows, llm, "B"))
+    tools = [(e["tool"], e["status"]) for e in run["trace"]]
     print({"status": run["status"], "requests": llm.requests, "tokens": llm.tokens})
+    print({"provider_errors": llm.errors, "trace": tools, "error": run.get("error")})
     assert llm.requests >= 1
     assert any(e["tool"] == "retrieve_qa_guidelines" and e["status"] == "ok" for e in run["trace"])
     assert run["status"] == "complete", run.get("error")

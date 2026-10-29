@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 import time
 
@@ -7,6 +8,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from releasepulse.analytics import analyze_testing_report, calculate_quality_metrics
 from releasepulse.mcp_client import retrieve_mcp
 from releasepulse.models import Assessment, TestCase
+
+log = logging.getLogger("releasepulse.agent")
 
 
 class EmptyArgs(BaseModel):
@@ -89,6 +92,7 @@ async def run_agent(
                     "tool": "llm",
                     "status": "error",
                     "error": type(exc).__name__,
+                    "category": getattr(exc, "category", None),
                     "seconds": time.monotonic() - started,
                 }
             )
@@ -96,7 +100,8 @@ async def run_agent(
                 "status": "partial",
                 "metrics": metrics,
                 "trace": trace,
-                "error": f"LLM unavailable or budget exhausted ({type(exc).__name__}); "
+                "error": f"LLM unavailable or budget exhausted ({type(exc).__name__}"
+                f"{': ' + exc.category if getattr(exc, 'category', None) else ''}); "
                 "deterministic policy remains available",
             }
         if reply.tool_calls:
@@ -159,6 +164,7 @@ async def run_agent(
                             "seconds": time.monotonic() - before,
                         }
                     )
+                log.info("step %s tool %s -> %s", step, name, trace[-1]["status"])
                 messages.append({"role": "tool", "tool_call_id": call.id, "content": content})
             continue
         try:

@@ -14,10 +14,12 @@ metric and release gate; a bounded agent running **Google Gemma 4 31B via OpenRo
 evidence with allowlisted tools and MCP guideline retrieval; a human reviews the result and explicitly
 approves any persistent report.
 
-> **Verification status (29 Oct 2026).** All local checks pass: 38 pytest tests, Ruff, offline A/B
-> harness 17/17 per configuration, real MCP stdio, Streamlit startup. **Live Gemma inference and the live
-> A/B evaluation are BLOCKED — awaiting the project owner's OpenRouter API key.** The integration is
-> complete and fails safely without a key. Offline results are labelled `deterministic_harness` and are
+> **Verification status (29 Oct 2026).** All local checks pass: 40 offline pytest tests, Ruff, offline A/B
+> harness 17/17 per configuration, real MCP stdio, Streamlit startup. The OpenRouter key is configured
+> and valid, but **live Gemma inference is BLOCKED upstream**: every request to
+> `google/gemma-4-31b-it:free` returned HTTP 429 `upstream_provider_shared_pool` from Google AI Studio
+> (the model's only free endpoint), so no tokens were generated and no live tool call has occurred yet.
+> The live test fails honestly and reports the error category. Offline results are labelled `deterministic_harness` and are
 > never presented as model accuracy. Full evidence: [docs/FINAL_AUDIT.md](docs/FINAL_AUDIT.md).
 
 ---
@@ -148,6 +150,13 @@ uv sync --frozen
 OpenRouter's free tier allows about 50 requests/day (about 1,000/day after buying 10 credits). Free
 model availability can change; an unavailable model is reported as a partial result, never replaced.
 
+Failed attempts are logged (logger `releasepulse.llm`) and kept in `OpenRouter.errors` as key-free
+records: `category` (`rate_limited_upstream`, `rate_limited_account`, `auth`, `insufficient_credits`,
+`model_unavailable`, `bad_request`, `timeout`, `connection`, `provider_error`, `empty_response`), HTTP
+status, provider name and OpenRouter `limit_source`. Rate limits wait for `Retry-After` or 15 s / 30 s
+(capped at 60 s); non-retryable statuses fail immediately. A response that fails sends no usage, so
+`tokens: 0` with `requests: 3` means no inference happened.
+
 ## Run the application
 ```bash
 uv run streamlit run app.py --server.address 127.0.0.1
@@ -213,7 +222,7 @@ Subsets: `--config A --ids 05_login 14_injection`.
 | Run | A | B | Mode |
 |---|---:|---:|---|
 | Offline harness (final, 29 Oct 2026) | 17/17 | 17/17 | `deterministic_harness` |
-| Live Gemma via OpenRouter | **BLOCKED** | **BLOCKED** | Awaiting API key |
+| Live Gemma via OpenRouter | **BLOCKED** | **BLOCKED** | Upstream 429 on the free model; not run |
 
 Equal offline scores demonstrate shared controls, **not** an improvement from prompt B and not model
 accuracy. Historical failed runs and the error analysis are in [evals/error_analysis.md](evals/error_analysis.md).
@@ -244,7 +253,7 @@ CI (`.github/workflows/ci.yml`) runs the same checks plus the offline evaluation
 
 ## Known limitations
 - Live Gemma tool-calling quality, prompt-B effectiveness and live adversarial robustness are
-  **unverified** until the API key is configured and the live suite is run.
+  **unverified**: the free Gemma 4 31B pool returned 429 on every attempt on 29 Oct 2026.
 - Free-model availability, tool-calling support and quotas on OpenRouter can change.
 - Policy and severity labels are a fixed synthetic checklist, not an assessment of a real trading system.
 - Issue descriptions are withheld from the model, limiting nuanced free-text interpretation.

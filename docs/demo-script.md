@@ -9,7 +9,7 @@ pass rate alone cannot justify release. Introduce fictional Nova Trade and synth
 
 **1:00–2:00 — Evidence.** Load the release-candidate sample. Point out 18 tests, 88.9% pass rate,
 full execution coverage, and HOLD caused by the critical login failure. Show source QA-000.
-Click Run agent analysis only with credentials. Show MCP retrieval and the observable tool timeline.
+Click Run agent analysis only with credentials (without a key the UI shows a configuration error). Show MCP retrieval and the observable tool timeline.
 
 **2:00–3:00 — Human control.** Open Reports, prepare the exact JSON, reject it, then prepare again and
 approve. Show the download and approval audit. Explain that the model has no save tool or approval token.
@@ -30,7 +30,7 @@ hypothesis until paired live trials establish it. Do not claim a model-accuracy 
 
 **7:00–8:00 — Security.** Load injection.csv and show the malicious description. Explain the lethal
 trifecta, exclusion of raw text, tool allowlist, fixed API destination and immutable approval proposal.
-Show the attack regression result. Close with remaining live-verification and publication steps.
+Show the attack regression result. Close with the remaining live-verification step (API key).
 
 Fallback: use the actual dashboard screenshots, policy calculations and recorded local test results.
 They are not a substitute for the pending live model requirement. Record a real live demo after keys

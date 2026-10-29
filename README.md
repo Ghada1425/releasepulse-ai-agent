@@ -1,199 +1,268 @@
 # ◈ ReleasePulse
 ### AI-Powered Product Quality & Release Intelligence Agent
 
-![Python](https://img.shields.io/badge/Python-3.11%2B-18344a)
-![Track](https://img.shields.io/badge/Capstone-Track%202-078582)
+![Python](https://img.shields.io/badge/Python-3.11%E2%80%933.14-18344a)
+![Track](https://img.shields.io/badge/Capstone-Track%202%20·%20Your%20Harness-078582)
+![Tests](https://img.shields.io/badge/pytest-38%20passed%20·%201%20blocked-078582)
 ![License](https://img.shields.io/badge/License-MIT-18344a)
 
-**Developed by Ghada Alaidi**  
-**Academic Capstone Project — SDAIA Academy**  
-**Program: Agentic AI Systems Engineering**
+**Developed by Ghada Alaidi**
+**SDAIA Academy — Agentic AI Systems Engineering Capstone** (Track 2 — Your Harness)
 
-ReleasePulse turns synthetic QA spreadsheets into a traceable release decision. Python computes the
-metrics and release gates; a bounded agent investigates evidence with local tools and MCP retrieval.
-The user reviews the result and explicitly approves any persistent report export.
+ReleasePulse turns a QA testing spreadsheet into a traceable release decision. Python computes every
+metric and release gate; a bounded agent running **Google Gemma 4 31B via OpenRouter** investigates the
+evidence with allowlisted tools and MCP guideline retrieval; a human reviews the result and explicitly
+approves any persistent report.
 
-> **Verification status:** local tool, harness and UI tests are supplied. Live OpenRouter inference and
-> live A/B evaluation remain pending an API key. Published at [Ghada1425/releasepulse-ai-agent](https://github.com/Ghada1425/releasepulse-ai-agent).
-> Offline results are explicitly labelled `deterministic_harness`, never presented as model accuracy.
+> **Verification status (29 Oct 2026).** All local checks pass: 38 pytest tests, Ruff, offline A/B
+> harness 17/17 per configuration, real MCP stdio, Streamlit startup. **Live Gemma inference and the live
+> A/B evaluation are BLOCKED — awaiting the project owner's OpenRouter API key.** The integration is
+> complete and fails safely without a key. Offline results are labelled `deterministic_harness` and are
+> never presented as model accuracy. Full evidence: [docs/FINAL_AUDIT.md](docs/FINAL_AUDIT.md).
+
+---
+
+## Contents
+[Motivation](#problem-and-motivation) · [Features](#key-features) · [Architecture](#system-architecture) ·
+[Agent workflow](#how-the-agent-works) · [Tools & MCP](#tools-and-mcp) · [Install](#installation) ·
+[Configure OpenRouter](#configure-openrouter-and-gemma) · [Run](#run-the-application) ·
+[Example](#example-qa-analysis) · [Approval](#human-approval-workflow) · [Evaluation](#evaluation) ·
+[Security](#security-and-governance) · [Limitations](#known-limitations) · [Demo](#demo-and-presentation) ·
+[Author](#author-and-acknowledgements)
 
 ## Problem and motivation
-Product teams collect test outcomes across features and channels, but raw pass rates can hide a critical
-login failure or an untested transfer flow. Release reviews need consistent policy, evidence and a clear
-account of what remains unknown. ReleasePulse makes those checks reproducible for fictional Nova Trade.
+Product teams collect test outcomes across features and channels, but an 89% pass rate can hide a
+critical login failure or an untested money-transfer flow. Release reviews need a consistent policy,
+traceable evidence and an honest account of what is still unknown. ReleasePulse makes those checks
+reproducible for **Nova Trade**, a fictional trading app. All data in this repository is synthetic.
 
-## Proposed solution and key features
-- Validated CSV/XLSX input, synthetic samples, real metrics and coverage analysis.
-- Four functional tools, including guideline retrieval through a real MCP stdio server/client.
-- Configurable Gemma via OpenRouter, real model-selected function calls and typed final output.
-- Explainable release policy with test IDs, guideline IDs and remediation suggestions.
-- Bounded steps, requests, context, tool outputs, retries and token reservations.
-- One-use approval tokens bound to immutable report bytes; rejected reports never save.
-- Inspectable tool activity, actual evaluation CSVs and security regression tests.
+## Key features
+- **Validated CSV/XLSX upload** — exact schema, enums, unique IDs, size/row/zip-expansion limits, and
+  row-level error messages that never echo the rejected value.
+- **Deterministic QA analytics** — pass/failure rates, severity distribution, feature × channel
+  coverage, duplicate issues and a versioned release policy (READY / REVIEW / HOLD / INSUFFICIENT_EVIDENCE).
+- **Tool-calling agent** — Gemma selects tools; arguments are schema-validated and allowlisted.
+- **Real MCP integration** — QA guidelines are retrieved from a Python MCP stdio server.
+- **Grounded, typed output** — a Pydantic assessment must match the policy decision and cite real
+  test IDs and retrieved rule IDs, including every critical issue.
+- **Bounded harness** — step, request, token, tool-output and repair limits; typed provider errors.
+- **Human approval** — one-use tokens bound to exact report bytes; rejection writes nothing.
+- **Inspectable activity** — every tool call, status, duration and result is visible in the UI.
 
 ## Application screenshots
-![Actual ReleasePulse overview](docs/screenshots/overview.png)
+![ReleasePulse overview](docs/screenshots/overview.png)
 
-Captured from the running app with synthetic data. No generated mockups or scripted-agent traces
-are presented as live model screenshots.
+Captured from the running app with synthetic data. No mockups or scripted traces are shown as live model output.
 
 ## System architecture
 ```mermaid
 flowchart LR
     U[Streamlit UI] --> V[Upload validation]
-    V --> D[Deterministic analytics]
-    U --> A[Bounded agent loop]
-    A --> L[OpenRouter free model]
-    A --> T[Allowlisted read tools]
+    V --> D[Deterministic analytics<br/>analytics.py]
+    U --> A[Bounded agent loop<br/>agent.py]
+    A <--> L[OpenRouter<br/>google/gemma-4-31b-it:free]
+    A --> T[Allowlisted read-only tools]
     T --> D
     T --> C[MCP stdio client]
     C --> S[MCP guideline server]
-    S --> K[Local QA policy]
-    A --> G[Schema and evidence validator]
+    S --> K[context/qa-policy.md]
+    A --> G[Schema + evidence validator]
     G --> U
-    U --> H[Human approval]
-    H --> R[Immutable JSON report]
+    U --> H{Human approval}
+    H -- approve --> R[Immutable JSON report<br/>runtime/reports]
+    H -- reject --> X[Nothing written]
 ```
 
+| Module | Responsibility |
+|---|---|
+| `app.py` | Streamlit dashboard: upload, metrics, agent run, activity, evaluation, approval |
+| `src/releasepulse/analytics.py` | Upload validation and deterministic policy v1.0 |
+| `src/releasepulse/agent.py` | Tool-calling loop, argument validation, output grounding, repair |
+| `src/releasepulse/llm.py` | OpenRouter client, budgets, retries, typed errors |
+| `src/releasepulse/mcp_server.py` / `mcp_client.py` | MCP guideline server and stdio client |
+| `src/releasepulse/retrieval.py` | Parses and ranks rules from `context/qa-policy.md` |
+| `src/releasepulse/security.py` | Approval-bound report store and audit |
+| `src/releasepulse/evaluation.py` | Resumable A/B evaluation runner with automatic graders |
+
 ## How the agent works
-The UI validates the report before an investigation starts. The model selects tools and arguments.
-Each call is schema-validated and allowlisted, executed, timed and returned as bounded evidence.
-The model can iterate for eight steps. A final Pydantic assessment must match the Python policy decision,
-cite real issue IDs and retrieved rules, and include every critical issue. Invalid output gets one repair
-opportunity. Exhaustion or failure returns safe partial results with deterministic metrics.
-No hidden chain-of-thought is requested or displayed.
+1. The UI validates the upload before any investigation starts; metrics are computed locally.
+2. The agent sends Gemma the system prompt, tool schemas and a task. **Raw issue text is never sent.**
+3. Gemma chooses tools. Each call is allowlisted, validated with Pydantic, executed, timed, capped at
+   6,000 characters and returned to the model as a `tool` message.
+4. The loop continues for at most **8 steps** (≤6 calls per step). History above 18,000 characters is
+   compacted to bounded verified evidence.
+5. The final answer must be JSON matching `Assessment`. It is rejected unless the required tools
+   succeeded, the decision equals the deterministic policy, every finding cites an open test and its
+   retrieved rule, and every critical test is covered. One repair attempt is allowed.
+6. Budget exhaustion, provider failures or invalid output produce a **partial** result; deterministic
+   metrics remain available and nothing is claimed as complete. Hidden reasoning is never requested.
 
-## Technology and tools
-Python 3.11–3.14, Streamlit, Pandas, OpenPyXL, Pydantic, OpenAI-compatible SDK, MCP Python SDK v1,
-pytest, Ruff and uv. MCP v1 is deliberately pinned; course examples use a newer API, so this integration
-is implemented against the installed SDK and verified by a subprocess integration test.
-
-| Tool | Execution | Evidence |
+## Tools and MCP
+| Tool | Execution | Returns |
 |---|---|---|
-| analyze_testing_report | Python | Totals, statuses, feature/channel counts |
-| calculate_quality_metrics | Python | Rates, gaps, severity, duplicates, policy decision |
-| retrieve_qa_guidelines | MCP stdio | Ranked policy IDs and excerpts |
-| generate_release_report | Python, memory only | Decision and issue evidence ready for review |
+| `analyze_testing_report` | Python | Totals, status, feature and channel counts |
+| `calculate_quality_metrics` | Python | Rates, gaps, severity, duplicates, policy decision, issue IDs |
+| `retrieve_qa_guidelines` | **MCP stdio** (`releasepulse.mcp_server`) | Ranked rule IDs, excerpts, `context/qa-policy.md#qa-0N` sources |
+| `generate_release_report` | Python, memory only | Decision and issue evidence for human review |
 
-Persistent saving is a separate UI capability, unavailable to the model.
+The MCP server parses the policy table in [context/qa-policy.md](context/qa-policy.md), so the rules the
+model retrieves are exactly the rules reviewers read; a regression test fails if they diverge.
+Saving a report is **not** a tool: it is a separate UI capability the model cannot reach.
 
-## Installation requirements
-Install Python 3.11+ and [uv](https://docs.astral.sh/uv/getting-started/installation/).
-From the repository root:
+## Installation
+Requirements: Python 3.11–3.14 and [uv](https://docs.astral.sh/uv/getting-started/installation/).
+No GPU or model download is needed.
+```bash
+git clone https://github.com/Ghada1425/releasepulse-ai-agent.git
+```
+```bash
+cd releasepulse-ai-agent
+```
 ```bash
 uv sync --frozen
 ```
-The committed `uv.lock` pins dependencies. No model downloads or GPU are required.
+`uv.lock` pins every dependency. If `uv` is not on your PATH, `pip install uv` and use `python -m uv`.
 
-## Environment configuration
-Copy `.env.example` to `.env` (`Copy-Item .env.example .env` in PowerShell; `cp .env.example .env` on Unix).
-Set the key locally; never commit it:
-```dotenv
-OPENROUTER_API_KEY=your_key_here
-OPENROUTER_MODEL=google/gemma-4-31b-it:free
-OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-```
-The model ID was found in OpenRouter's public catalog on 29 October 2026 with zero token pricing.
-This verifies availability metadata, not successful inference. Availability and quotas can change.
-Only free model IDs and zero-price providers are allowed; no automatic paid fallback.
+## Configure OpenRouter and Gemma
+| Setting | Value |
+|---|---|
+| Model | `google/gemma-4-31b-it:free` (Google Gemma 4 31B Instruct) |
+| Provider / base URL | OpenRouter · `https://openrouter.ai/api/v1` |
+| Client | OpenAI-compatible Python SDK, `temperature=0`, SDK retries disabled |
+| Cost guard | `:free` models only, provider `max_price` 0, no paid fallback |
 
-## Run locally
+1. Create a key at <https://openrouter.ai/keys>.
+2. Copy the template — PowerShell: `Copy-Item .env.example .env`; macOS/Linux: `cp .env.example .env`.
+3. Edit `.env` (it is git-ignored; never commit it):
+   ```dotenv
+   OPENROUTER_API_KEY=your_key_here
+   OPENROUTER_MODEL=google/gemma-4-31b-it:free
+   OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+   ```
+4. Verify live tool calling with one budgeted request sequence (≤12 requests):
+   ```bash
+   uv run pytest tests/test_live.py -s -rs
+   ```
+   Without a key this test is reported as `SKIPPED … BLOCKED — Awaiting API Key`; it is never faked.
+
+OpenRouter's free tier allows about 50 requests/day (about 1,000/day after buying 10 credits). Free
+model availability can change; an unavailable model is reported as a partial result, never replaced.
+
+## Run the application
 ```bash
 uv run streamlit run app.py --server.address 127.0.0.1
 ```
-Open http://localhost:8501. Deterministic upload, charts and approval/export work without a key.
-The **Run agent analysis** button requires a real key and never substitutes a scripted response.
+Open <http://localhost:8501>. Upload, metrics, charts, issues and approval/export all work **without** a
+key. **Run agent analysis** needs a key; without one the UI shows a configuration error and runs nothing.
 
-## Example workflow
-1. Load `release_candidate.csv`: 18 executions, 16 passed, two failed, 100% feature/channel execution.
-2. Observe HOLD: QA-000 is a critical Login/Web failure. A high-priority market-data failure also needs review.
-3. Run the agent and inspect actual tools and retrieved excerpts in Agent Activity.
-4. Review the AI findings alongside deterministic evidence.
-5. In Reports, prepare the preview; reject once to demonstrate no write.
-6. Prepare again, approve and download the exact JSON report.
+## Example QA analysis
+Load `release_candidate.csv` (also provided as `.xlsx`):
 
-All samples are fictional. Required columns: `test_id,feature,channel,status,severity,issue`.
-Use the exact sample feature names. Status values: passed/failed/blocked/skipped; severity:
-critical/high/medium/low. Test IDs must be unique. Limits: 5 MB, 10,000 rows, 25 MB expanded XLSX.
-The complete formulas and release gates are in [QA policy](context/qa-policy.md).
+| Metric | Value |
+|---|---|
+| Test executions | 18 (16 passed, 2 failed) |
+| Pass rate | 88.9% |
+| Feature/channel coverage | 100% (18 of 18 pairs executed) |
+| Open issues | `QA-000` Login/Web **critical**, `QA-006` Market data/Web high |
+| Decision | **HOLD** — QA-01: a failed critical test blocks release |
 
-## Evaluation methodology
+`healthy.csv` yields READY; `injection.csv` contains a prompt-injection payload and still yields HOLD.
+Required columns: `test_id,feature,channel,status,severity,issue`. Status: passed/failed/blocked/skipped;
+severity: critical/high/medium/low; features must use the nine sample names; test IDs must be unique.
+Limits: 5 MB, 10,000 rows, 25 MB expanded XLSX. Formulas and gates: [QA policy](context/qa-policy.md).
+
+## Human approval workflow
+1. Open **Reports** and review the exact JSON (source SHA-256, metrics, agent result).
+2. **Prepare this report for approval** creates a random one-use token bound to those bytes.
+3. **Reject** consumes the token and writes nothing. **Approve & save** writes
+   `runtime/reports/report-<sha256>.json` plus the session approval audit, then offers a download.
+4. Loading new data or re-running the agent discards any pending proposal.
+
+Approval, rejection, replay and post-proposal tampering are covered by unit and Streamlit UI tests.
+
+## Evaluation
+17 JSONL tasks ([evals/tasks.jsonl](evals/tasks.jsonl)) cover XLSX/CSV parsing, schema rejection,
+policy decisions, coverage gaps, duplicates, rates, empty input, approval, prompt injection and tool
+failure. Automatic graders compare the **agent's validated decision** and status with independent
+expectations and require the analysis, metrics and MCP retrieval tools to have succeeded.
+
+| Configuration | Prompt |
+|---|---|
+| A — baseline | System prompt with schema, tool boundaries and untrusted-data policy |
+| B — enhanced | A + explicit tool order, retrieval and evidence-grounding guidance |
+
+Both share the model, tools, policy, validation and permission controls.
+
+**Offline harness** (no key; scripted model double drives the protocol, real tools and MCP execute):
 ```bash
-uv run pytest -q
-uv run ruff check .
-uv run ruff format --check .
 uv run python -m releasepulse.evaluation
 ```
-Seventeen JSONL cases have independently specified expected decisions, metrics, rejections or permissions.
-Both A and B run the same tasks and core controls. A has basic instructions; B adds tool order and grounding
-guidance. Offline runs use an explicitly named `ScriptedLLM` protocol double but execute real tools/MCP.
-They test engineering invariants, not the model's ability to choose tools or reason.
-
-Live evaluation, after configuring credentials:
+**Live evaluation** (after configuring the key; resumable and quota-aware):
 ```bash
 uv run python -m releasepulse.evaluation --live --max-requests 40
 ```
-Output: `evals/live_results_A.csv` and `live_results_B.csv`. Forty attempts may not finish 34 cases;
-budget exhaustion is recorded as failure/partial, never a fabricated success. For quota-friendly subsets:
 ```bash
-uv run python -m releasepulse.evaluation --live --config A B --ids 05_login 14_injection --max-requests 30
+uv run python -m releasepulse.evaluation --live --resume --max-requests 40
 ```
-Each command replaces its selected result files; archive prior runs before comparing trials. Each CSV records
-task, input, expectation, actual result, tool calls, pass/failure, category, time and cumulative usage.
-Validation/approval cases are local checks even in live mode. A complete live comparison requires enough
-provider quota and separately reviewed model explanations.
+Writes `evals/live_results_A.csv` and `evals/live_results_B.csv`. When the local budget or provider
+quota runs out, the runner stops (exit 3) **without** recording that task, so `--resume` continues the
+next day. A full run needs roughly 100–170 requests. Without a key it prints `BLOCKED` and exits 2.
+Subsets: `--config A --ids 05_login 14_injection`.
 
-## Actual A/B results and error analysis
-Measured local results are in [A](evals/results_A.csv), [B](evals/results_B.csv) and
-[error analysis](evals/error_analysis.md). Live model success rates are **not available**.
-Equal offline pass rates demonstrate shared controls; they do not establish an improvement from prompt B.
+### Results
+| Run | A | B | Mode |
+|---|---:|---:|---|
+| Offline harness (final, 29 Oct 2026) | 17/17 | 17/17 | `deterministic_harness` |
+| Live Gemma via OpenRouter | **BLOCKED** | **BLOCKED** | Awaiting API key |
 
-| Verification | Result |
-|---|---|
-| Pytest regression suite | 22 passed |
-| Offline harness A | 17/17 passed |
-| Offline harness B | 17/17 passed |
-| Live model A/B | Pending credentials |
+Equal offline scores demonstrate shared controls, **not** an improvement from prompt B and not model
+accuracy. Historical failed runs and the error analysis are in [evals/error_analysis.md](evals/error_analysis.md).
+Failure categories: `budget_exhausted`, `provider_unavailable`, `llm_error`, `tool_execution`,
+`unauthorized_tool_request`, `invalid_or_ungrounded_output`, `expectation_mismatch`.
+
+### Engineering checks
+```bash
+uv run ruff check .
+```
+```bash
+uv run ruff format --check .
+```
+```bash
+uv run pytest -q
+```
+CI (`.github/workflows/ci.yml`) runs the same checks plus the offline evaluation on every push.
 
 ## Security and governance
-Read the [attack and defence note](docs/security.md), [context specification](context/system-spec.md)
-and [engineering contract](AGENTS.md). Raw issue text is excluded from model input, tools are read-only,
-API destinations are fixed, and policy decisions cannot be overridden by generated text.
-Report export requires human approval of exact content. Session audit records approval and rejection;
-only approved reports persist their audit. Logs omit raw provider errors and credentials.
+- **Lethal trifecta:** untrusted uploads + an outbound LLM channel are present; private data is excluded
+  by design (synthetic data only, secrets never in prompts or tools). See [docs/security.md](docs/security.md).
+- **Prompt injection:** raw issue text never crosses the model boundary; tested with `injection.csv`.
+- **Tool permissions:** four read-only tools; unknown tools (e.g. `save_report`) are rejected before execution.
+- **Policy authority:** generated text cannot change the deterministic decision.
+- **Approval:** writes happen only through the UI with a byte-bound one-use token.
+- **Operability:** typed errors; traces record exception classes, never provider payloads or keys.
+- Context contracts: [AGENTS.md](AGENTS.md), [system spec](context/system-spec.md).
 
-## Limitations
-- Live inference, live prompt effectiveness and live adversarial-model behavior are unverified until credentials are supplied.
-- A fixed synthetic checklist and severity labels are assumptions, not an assessment of an actual trading system.
-- Free-text issue descriptions are withheld from the model; nuanced issue interpretation is limited.
-- Model explanations may still contain unsupported prose despite valid evidence references; human review is required.
-- Keyword retrieval is appropriate for four short rules; it is not semantic search.
-- Session quotas reset on restart; account-level quotas remain the provider's responsibility.
-- Local single-user deployment only; no authentication, durable sessions or centralized audit service.
+## Known limitations
+- Live Gemma tool-calling quality, prompt-B effectiveness and live adversarial robustness are
+  **unverified** until the API key is configured and the live suite is run.
+- Free-model availability, tool-calling support and quotas on OpenRouter can change.
+- Policy and severity labels are a fixed synthetic checklist, not an assessment of a real trading system.
+- Issue descriptions are withheld from the model, limiting nuanced free-text interpretation.
+- Model explanations can still contain unsupported prose; validated IDs do not prove semantic grounding.
+- Keyword retrieval suits four short rules; it is not semantic search.
+- Local single-user app: no authentication, durable sessions or central audit store. Session quotas reset on restart.
+- The README screenshot predates the colour-coded decision banner (HOLD is now red, READY green).
 
-## Future improvements
-Run paired live trials and examine incorrect reasoning, extend policy fixtures, add consented durable
-audits, evaluate controlled extraction of issue text, and add authenticated deployment only if needed.
-
-## Demo, presentation and reproducibility
-See [demo script](docs/demo-script.md), `slides/`, [verification record](docs/verification.md) and
-[course review](docs/course-review.md). No backup live-model recording is claimed.
-
-## GitHub publication
-After re-authenticating, from this repository:
-```bash
-gh auth login --hostname github.com
-git status
-gh repo create releasepulse-ai-agent --public --source=. --remote=origin --push
-gh repo view --json url
-git ls-remote origin HEAD
-```
-If the name already exists, inspect that repository before adding a remote; do not overwrite it.
+## Demo and presentation
+[Demo script](docs/demo-script.md) · [slides](slides/ReleasePulse-capstone.pptx) ·
+[final audit](docs/FINAL_AUDIT.md) · [verification record](docs/verification.md) ·
+[course review](docs/course-review.md). Without a key, present the deterministic flow and announce that
+live inference is pending; record a live backup once the key is configured.
 
 ## Author and acknowledgements
-**Developed by Ghada Alaidi.** Independent academic capstone for **SDAIA Academy — Agentic AI Systems
-Engineering**, Track 2: Your Harness. Thank you to SDAIA Academy for the learning materials and capstone
-framework: [official course](https://sdaiaacademy.github.io/agentic-ai/) and
+**Developed by Ghada Alaidi** as an independent capstone for **SDAIA Academy — Agentic AI Systems
+Engineering**, Track 2: Your Harness. Thanks to SDAIA Academy for the learning materials and capstone
+framework: [official course](https://sdaiaacademy.github.io/agentic-ai/) ·
 [course repository](https://github.com/SDAIAAcademy/agentic-ai).
-This project is not officially endorsed by SDAIA Academy. Original code and synthetic datasets are MIT
-licensed; no unlicensed course code is redistributed. See [attribution review](docs/course-review.md).
+This project is not officially endorsed by SDAIA Academy. Original code and synthetic data are MIT
+licensed; no course code is redistributed ([attribution review](docs/course-review.md)).

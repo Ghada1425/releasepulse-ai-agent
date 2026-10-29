@@ -285,4 +285,4 @@ Engineering**, Track 2: Your Harness. Thanks to SDAIA Academy for the learning m
 framework: [official course](https://sdaiaacademy.github.io/agentic-ai/) ·
 [course repository](https://github.com/SDAIAAcademy/agentic-ai).
 This project is not officially endorsed by SDAIA Academy. Original code and synthetic data are MIT
-licensed; no course code is redistributed ([attribution review](docs/course-review.md)).
+licensed; no course code is redistributed ([attribution review](docs/course-review.md))..
